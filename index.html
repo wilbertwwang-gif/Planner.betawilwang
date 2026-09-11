@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planner</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <h1>Planner</h1>
+    </div>
+    <div class="today-pill" id="todayPill"></div>
+  </header>
+
+  <main class="layout">
+
+    <!-- CALENDAR -->
+    <section class="panel calendar-panel">
+      <div class="panel-header">
+        <div class="cal-nav">
+          <button class="icon-btn" id="prevMonth" aria-label="Previous month">&#8249;</button>
+          <h2 id="monthLabel">Month Year</h2>
+          <button class="icon-btn" id="nextMonth" aria-label="Next month">&#8250;</button>
+        </div>
+        <button class="btn btn-primary" id="todayBtn">Today</button>
+      </div>
+
+      <div class="weekday-row">
+        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </section>
+
+    <!-- SIDE: tasks + checklist -->
+    <section class="side">
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2 id="selectedDateLabel">Today</h2>
+        </div>
+
+        <!-- Add event to calendar -->
+        <div class="subsection">
+          <h3>Add to Calendar</h3>
+          <form id="eventForm" class="inline-form">
+            <input type="text" id="eventTitle" placeholder="Event title" required maxlength="80">
+            <input type="time" id="eventTime">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+        </div>
+
+        <div class="subsection">
+          <h3>Events</h3>
+          <ul class="item-list" id="eventList"></ul>
+          <p class="empty-hint" id="eventEmptyHint">No events for this day.</p>
+        </div>
+
+        <!-- Daily task list -->
+        <div class="subsection">
+          <h3>Daily Tasks</h3>
+          <form id="taskForm" class="inline-form">
+            <input type="text" id="taskTitle" placeholder="Add a task…" required maxlength="120">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+          <ul class="item-list checklist" id="taskList"></ul>
+          <p class="empty-hint" id="taskEmptyHint">No tasks yet — add one above.</p>
+          <div class="progress-row" id="taskProgressRow" hidden>
+            <div class="progress-track"><div class="progress-fill" id="taskProgressFill"></div></div>
+            <span class="progress-label" id="taskProgressLabel"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily checklist (recurring, resets each day) -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Daily Checklist</h2>
+          <span class="hint-tag">resets daily</span>
+        </div>
+        <form id="checklistForm" class="inline-form">
+          <input type="text" id="checklistTitle" placeholder="Add a recurring habit…" required maxlength="120">
+          <button type="submit" class="btn btn-primary">Add</button>
+        </form>
+        <ul class="item-list checklist" id="checklistList"></ul>
+        <p class="empty-hint" id="checklistEmptyHint">No checklist items yet.</p>
+        <div class="progress-row" id="checklistProgressRow" hidden>
+          <div class="progress-track"><div class="progress-fill" id="checklistProgressFill"></div></div>
+          <span class="progress-label" id="checklistProgressLabel"></span>
+        </div>
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
