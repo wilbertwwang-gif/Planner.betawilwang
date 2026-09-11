@@ -7,6 +7,7 @@
 
   let viewYear, viewMonth; // 0-indexed month for the visible calendar page
   let selectedDate = toKey(new Date());
+  const selectedRecurDays = new Set();
 
   const els = {
     monthLabel: document.getElementById("monthLabel"),
@@ -38,6 +39,12 @@
     checklistProgressRow: document.getElementById("checklistProgressRow"),
     checklistProgressFill: document.getElementById("checklistProgressFill"),
     checklistProgressLabel: document.getElementById("checklistProgressLabel"),
+
+    recurringForm: document.getElementById("recurringForm"),
+    recurringTitle: document.getElementById("recurringTitle"),
+    recurringList: document.getElementById("recurringList"),
+    recurringEmptyHint: document.getElementById("recurringEmptyHint"),
+    weekdayPicker: document.getElementById("weekdayPicker"),
   };
 
   init();
@@ -63,9 +70,24 @@
     els.eventForm.addEventListener("submit", onAddEvent);
     els.taskForm.addEventListener("submit", onAddTask);
     els.checklistForm.addEventListener("submit", onAddChecklistItem);
+    els.recurringForm.addEventListener("submit", onAddRecurringTask);
+
+    els.weekdayPicker.querySelectorAll(".wd-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const day = Number(chip.dataset.day);
+        if (selectedRecurDays.has(day)) {
+          selectedRecurDays.delete(day);
+          chip.classList.remove("active");
+        } else {
+          selectedRecurDays.add(day);
+          chip.classList.add("active");
+        }
+      });
+    });
 
     renderCalendar();
     renderSelectedDay();
+    renderRecurringList();
   }
 
   // ---------- persistence ----------
@@ -75,12 +97,18 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return Object.assign({ events: {}, tasks: {}, checklistItems: [], checklistDone: {} }, parsed);
+        return Object.assign({
+          events: {}, tasks: {}, checklistItems: [], checklistDone: {},
+          recurringTasks: [], recurringDone: {},
+        }, parsed);
       }
     } catch (e) {
       console.warn("Failed to load planner data", e);
     }
-    return { events: {}, tasks: {}, checklistItems: [], checklistDone: {} };
+    return {
+      events: {}, tasks: {}, checklistItems: [], checklistDone: {},
+      recurringTasks: [], recurringDone: {},
+    };
   }
 
   function save() {
@@ -110,6 +138,39 @@
     const period = h >= 12 ? "PM" : "AM";
     const h12 = h % 12 === 0 ? 12 : h % 12;
     return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+  }
+
+  function keyToDate(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  // Tasks visible on a given date = one-off tasks stored for that date,
+  // plus recurring tasks whose weekday set includes that date's weekday.
+  function getDayTaskItems(dateKey) {
+    const weekday = keyToDate(dateKey).getDay();
+    const manual = (state.tasks[dateKey] || []).map((t) => ({
+      id: t.id, title: t.title, done: t.done, recurring: false,
+    }));
+    const recurDoneSet = new Set(state.recurringDone[dateKey] || []);
+    const recurring = state.recurringTasks
+      .filter((t) => t.days.includes(weekday))
+      .map((t) => ({ id: t.id, title: t.title, done: recurDoneSet.has(t.id), recurring: true }));
+    return manual.concat(recurring);
+  }
+
+  function getDayTaskStats(dateKey) {
+    const items = getDayTaskItems(dateKey);
+    const done = items.filter((i) => i.done).length;
+    return { total: items.length, done };
+  }
+
+  function toggleRecurringDone(dateKey, id) {
+    const arr = state.recurringDone[dateKey] || [];
+    const idx = arr.indexOf(id);
+    if (idx === -1) arr.push(id); else arr.splice(idx, 1);
+    state.recurringDone[dateKey] = arr;
+    save();
   }
 
   // ---------- calendar rendering ----------
@@ -167,17 +228,27 @@
       cell.appendChild(num);
 
       const dayEvents = state.events[key] || [];
-      const dayTasks = state.tasks[key] || [];
-      if (dayEvents.length || dayTasks.length) {
+      if (dayEvents.length) {
         const dots = document.createElement("div");
         dots.className = "day-dots";
-        const count = Math.min(dayEvents.length + dayTasks.length, 4);
+        const count = Math.min(dayEvents.length, 4);
         for (let i = 0; i < count; i++) {
           const dot = document.createElement("span");
           dot.className = "day-dot";
           dots.appendChild(dot);
         }
         cell.appendChild(dots);
+      }
+
+      const stats = getDayTaskStats(key);
+      if (stats.total > 0) {
+        const track = document.createElement("div");
+        track.className = "day-progress";
+        const fill = document.createElement("div");
+        fill.className = "day-progress-fill";
+        fill.style.width = Math.round((stats.done / stats.total) * 100) + "%";
+        track.appendChild(fill);
+        cell.appendChild(track);
       }
 
       cell.addEventListener("click", () => {
@@ -282,7 +353,7 @@
   }
 
   function renderTasks() {
-    const items = state.tasks[selectedDate] || [];
+    const items = getDayTaskItems(selectedDate);
     els.taskList.innerHTML = "";
     els.taskEmptyHint.hidden = items.length > 0;
 
@@ -290,12 +361,19 @@
       els.taskList.appendChild(buildChecklistRow({
         title: item.title,
         done: item.done,
+        recurring: item.recurring,
         onToggle: () => {
-          item.done = !item.done;
-          save();
+          if (item.recurring) {
+            toggleRecurringDone(selectedDate, item.id);
+          } else {
+            const list = state.tasks[selectedDate] || [];
+            const t = list.find((x) => x.id === item.id);
+            if (t) { t.done = !t.done; save(); }
+          }
           renderTasks();
+          renderCalendar();
         },
-        onDelete: (li) => removeItem("tasks", item.id, li),
+        onDelete: item.recurring ? null : (li) => removeItem("tasks", item.id, li),
       }));
     });
 
@@ -374,9 +452,86 @@
     updateProgress(asDoneArray, els.checklistProgressRow, els.checklistProgressFill, els.checklistProgressLabel);
   }
 
+  // ---------- recurring tasks ----------
+
+  function onAddRecurringTask(e) {
+    e.preventDefault();
+    const title = els.recurringTitle.value.trim();
+    if (!title) return;
+
+    // No days picked = repeats every day of the week.
+    const days = selectedRecurDays.size ? Array.from(selectedRecurDays).sort() : [0, 1, 2, 3, 4, 5, 6];
+    state.recurringTasks.push({ id: uid(), title, days });
+
+    els.recurringTitle.value = "";
+    selectedRecurDays.clear();
+    els.weekdayPicker.querySelectorAll(".wd-chip.active").forEach((chip) => chip.classList.remove("active"));
+
+    save();
+    renderRecurringList();
+    renderTasks();
+    renderCalendar();
+  }
+
+  function renderRecurringList() {
+    const items = state.recurringTasks;
+    const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+
+    els.recurringList.innerHTML = "";
+    els.recurringEmptyHint.hidden = items.length > 0;
+
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "item-row";
+
+      const icon = document.createElement("span");
+      icon.className = "recur-icon";
+      icon.title = "Recurring task";
+      icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0 1 10.2-4.2M14 8a6 6 0 0 1-10.2 4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 2.2v3.2h-3.2M5 13.8v-3.2h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      li.appendChild(icon);
+
+      const titleEl = document.createElement("span");
+      titleEl.className = "item-title";
+      titleEl.textContent = item.title;
+      li.appendChild(titleEl);
+
+      const daysWrap = document.createElement("span");
+      daysWrap.className = "recur-days";
+      dayLabels.forEach((label, idx) => {
+        const tag = document.createElement("span");
+        tag.className = "recur-day-tag" + (item.days.includes(idx) ? " active" : "");
+        tag.textContent = label;
+        daysWrap.appendChild(tag);
+      });
+      li.appendChild(daysWrap);
+
+      const del = document.createElement("button");
+      del.className = "item-delete";
+      del.innerHTML = "&times;";
+      del.setAttribute("aria-label", "Remove recurring task");
+      del.addEventListener("click", () => {
+        li.classList.add("removing");
+        setTimeout(() => {
+          const idx = state.recurringTasks.findIndex((t) => t.id === item.id);
+          if (idx !== -1) state.recurringTasks.splice(idx, 1);
+          Object.keys(state.recurringDone).forEach((dateKey) => {
+            state.recurringDone[dateKey] = state.recurringDone[dateKey].filter((x) => x !== item.id);
+          });
+          save();
+          renderRecurringList();
+          renderTasks();
+          renderCalendar();
+        }, 180);
+      });
+      li.appendChild(del);
+
+      els.recurringList.appendChild(li);
+    });
+  }
+
   // ---------- shared row builder ----------
 
-  function buildChecklistRow({ title, done, onToggle, onDelete }) {
+  function buildChecklistRow({ title, done, onToggle, onDelete, recurring }) {
     const li = document.createElement("li");
     li.className = "item-row" + (done ? " done" : "");
 
@@ -385,20 +540,30 @@
     circle.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.2 12 13 4" stroke="#0d0e10" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     li.appendChild(circle);
 
+    if (recurring) {
+      const icon = document.createElement("span");
+      icon.className = "recur-icon";
+      icon.title = "Recurring task";
+      icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0 1 10.2-4.2M14 8a6 6 0 0 1-10.2 4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 2.2v3.2h-3.2M5 13.8v-3.2h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      li.appendChild(icon);
+    }
+
     const titleEl = document.createElement("span");
     titleEl.className = "item-title";
     titleEl.textContent = title;
     li.appendChild(titleEl);
 
-    const del = document.createElement("button");
-    del.className = "item-delete";
-    del.innerHTML = "&times;";
-    del.setAttribute("aria-label", "Remove item");
-    del.addEventListener("click", (evt) => {
-      evt.stopPropagation();
-      onDelete(li);
-    });
-    li.appendChild(del);
+    if (onDelete) {
+      const del = document.createElement("button");
+      del.className = "item-delete";
+      del.innerHTML = "&times;";
+      del.setAttribute("aria-label", "Remove item");
+      del.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        onDelete(li);
+      });
+      li.appendChild(del);
+    }
 
     li.addEventListener("click", onToggle);
 

@@ -74,6 +74,27 @@
             <span class="progress-label" id="taskProgressLabel"></span>
           </div>
         </div>
+
+        <!-- Recurring tasks -->
+        <div class="subsection">
+          <h3>Recurring Tasks</h3>
+          <form id="recurringForm" class="inline-form recurring-form">
+            <input type="text" id="recurringTitle" placeholder="Add a recurring task…" required maxlength="120">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+          <div class="weekday-picker" id="weekdayPicker">
+            <button type="button" class="wd-chip" data-day="0">S</button>
+            <button type="button" class="wd-chip" data-day="1">M</button>
+            <button type="button" class="wd-chip" data-day="2">T</button>
+            <button type="button" class="wd-chip" data-day="3">W</button>
+            <button type="button" class="wd-chip" data-day="4">T</button>
+            <button type="button" class="wd-chip" data-day="5">F</button>
+            <button type="button" class="wd-chip" data-day="6">S</button>
+          </div>
+          <p class="picker-hint">Pick days to repeat on, or leave blank to repeat daily.</p>
+          <ul class="item-list" id="recurringList"></ul>
+          <p class="empty-hint" id="recurringEmptyHint">No recurring tasks yet.</p>
+        </div>
       </div>
 
       <!-- Daily checklist (recurring, resets each day) -->
