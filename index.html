@@ -65,6 +65,7 @@
           <h3>Daily Tasks</h3>
           <form id="taskForm" class="inline-form">
             <input type="text" id="taskTitle" placeholder="Add a task…" required maxlength="120">
+            <input type="time" id="taskTime">
             <button type="submit" class="btn btn-primary">Add</button>
           </form>
           <ul class="item-list checklist" id="taskList"></ul>
@@ -80,6 +81,7 @@
           <h3>Recurring Tasks</h3>
           <form id="recurringForm" class="inline-form recurring-form">
             <input type="text" id="recurringTitle" placeholder="Add a recurring task…" required maxlength="120">
+            <input type="time" id="recurringTime">
             <button type="submit" class="btn btn-primary">Add</button>
           </form>
           <div class="weekday-picker" id="weekdayPicker">

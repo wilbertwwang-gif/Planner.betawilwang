@@ -26,6 +26,7 @@
 
     taskForm: document.getElementById("taskForm"),
     taskTitle: document.getElementById("taskTitle"),
+    taskTime: document.getElementById("taskTime"),
     taskList: document.getElementById("taskList"),
     taskEmptyHint: document.getElementById("taskEmptyHint"),
     taskProgressRow: document.getElementById("taskProgressRow"),
@@ -42,6 +43,7 @@
 
     recurringForm: document.getElementById("recurringForm"),
     recurringTitle: document.getElementById("recurringTitle"),
+    recurringTime: document.getElementById("recurringTime"),
     recurringList: document.getElementById("recurringList"),
     recurringEmptyHint: document.getElementById("recurringEmptyHint"),
     weekdayPicker: document.getElementById("weekdayPicker"),
@@ -165,16 +167,17 @@
 
   // Tasks visible on a given date = one-off tasks stored for that date,
   // plus recurring tasks whose weekday set includes that date's weekday.
+  // Sorted so timed tasks appear in chronological order, untimed tasks last.
   function getDayTaskItems(dateKey) {
     const weekday = keyToDate(dateKey).getDay();
     const manual = (state.tasks[dateKey] || []).map((t) => ({
-      id: t.id, title: t.title, done: t.done, recurring: false,
+      id: t.id, title: t.title, done: t.done, time: t.time || "", recurring: false,
     }));
     const recurDoneSet = new Set(state.recurringDone[dateKey] || []);
     const recurring = state.recurringTasks
       .filter((t) => t.days.includes(weekday))
-      .map((t) => ({ id: t.id, title: t.title, done: recurDoneSet.has(t.id), recurring: true }));
-    return manual.concat(recurring);
+      .map((t) => ({ id: t.id, title: t.title, done: recurDoneSet.has(t.id), time: t.time || "", recurring: true }));
+    return manual.concat(recurring).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
   }
 
   function getDayTaskStats(dateKey) {
@@ -360,11 +363,13 @@
     e.preventDefault();
     const title = els.taskTitle.value.trim();
     if (!title) return;
+    const time = els.taskTime.value;
 
     if (!state.tasks[selectedDate]) state.tasks[selectedDate] = [];
-    state.tasks[selectedDate].push({ id: uid(), title, done: false });
+    state.tasks[selectedDate].push({ id: uid(), title, done: false, time });
 
     els.taskTitle.value = "";
+    els.taskTime.value = "";
     save();
     renderTasks();
     renderCalendar();
@@ -379,6 +384,7 @@
       els.taskList.appendChild(buildChecklistRow({
         title: item.title,
         done: item.done,
+        time: item.time,
         recurring: item.recurring,
         onToggle: () => {
           if (item.recurring) {
@@ -476,12 +482,14 @@
     e.preventDefault();
     const title = els.recurringTitle.value.trim();
     if (!title) return;
+    const time = els.recurringTime.value;
 
     // No days picked = repeats every day of the week.
     const days = selectedRecurDays.size ? Array.from(selectedRecurDays).sort() : [0, 1, 2, 3, 4, 5, 6];
-    state.recurringTasks.push({ id: uid(), title, days });
+    state.recurringTasks.push({ id: uid(), title, days, time });
 
     els.recurringTitle.value = "";
+    els.recurringTime.value = "";
     selectedRecurDays.clear();
     els.weekdayPicker.querySelectorAll(".wd-chip.active").forEach((chip) => chip.classList.remove("active"));
 
@@ -507,6 +515,13 @@
       icon.title = "Recurring task";
       icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0 1 10.2-4.2M14 8a6 6 0 0 1-10.2 4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 2.2v3.2h-3.2M5 13.8v-3.2h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       li.appendChild(icon);
+
+      if (item.time) {
+        const t = document.createElement("span");
+        t.className = "item-time";
+        t.textContent = formatTime12(item.time);
+        li.appendChild(t);
+      }
 
       const titleEl = document.createElement("span");
       titleEl.className = "item-title";
@@ -549,7 +564,7 @@
 
   // ---------- shared row builder ----------
 
-  function buildChecklistRow({ title, done, onToggle, onDelete, recurring }) {
+  function buildChecklistRow({ title, done, onToggle, onDelete, recurring, time }) {
     const li = document.createElement("li");
     li.className = "item-row" + (done ? " done" : "");
 
@@ -557,6 +572,13 @@
     circle.className = "check-circle";
     circle.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.2 12 13 4" stroke="#0d0e10" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     li.appendChild(circle);
+
+    if (time) {
+      const t = document.createElement("span");
+      t.className = "item-time";
+      t.textContent = formatTime12(time);
+      li.appendChild(t);
+    }
 
     if (recurring) {
       const icon = document.createElement("span");
