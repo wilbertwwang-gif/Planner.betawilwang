@@ -45,6 +45,15 @@
     recurringList: document.getElementById("recurringList"),
     recurringEmptyHint: document.getElementById("recurringEmptyHint"),
     weekdayPicker: document.getElementById("weekdayPicker"),
+
+    refreshNewsBtn: document.getElementById("refreshNewsBtn"),
+    watchlistForm: document.getElementById("watchlistForm"),
+    tickerInput: document.getElementById("tickerInput"),
+    watchlistGrid: document.getElementById("watchlistGrid"),
+    watchlistEmptyHint: document.getElementById("watchlistEmptyHint"),
+    apiKeyForm: document.getElementById("apiKeyForm"),
+    apiKeyInput: document.getElementById("apiKeyInput"),
+    apiKeyStatus: document.getElementById("apiKeyStatus"),
   };
 
   init();
@@ -85,9 +94,16 @@
       });
     });
 
+    els.watchlistForm.addEventListener("submit", onAddTicker);
+    els.apiKeyForm.addEventListener("submit", onSaveApiKey);
+    els.refreshNewsBtn.addEventListener("click", () => loadAllNews());
+    els.apiKeyInput.value = state.finnhubApiKey || "";
+
     renderCalendar();
     renderSelectedDay();
     renderRecurringList();
+    renderWatchlist();
+    loadAllNews();
   }
 
   // ---------- persistence ----------
@@ -100,6 +116,7 @@
         return Object.assign({
           events: {}, tasks: {}, checklistItems: [], checklistDone: {},
           recurringTasks: [], recurringDone: {},
+          stockWatchlist: [], finnhubApiKey: "",
         }, parsed);
       }
     } catch (e) {
@@ -108,6 +125,7 @@
     return {
       events: {}, tasks: {}, checklistItems: [], checklistDone: {},
       recurringTasks: [], recurringDone: {},
+      stockWatchlist: [], finnhubApiKey: "",
     };
   }
 
@@ -580,6 +598,197 @@
     const pct = Math.round((doneCount / items.length) * 100);
     fill.style.width = pct + "%";
     label.textContent = `${doneCount}/${items.length}`;
+  }
+
+  // ---------- stock news tracker ----------
+
+  function normalizeSymbol(raw) {
+    return raw.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
+  }
+
+  function onAddTicker(e) {
+    e.preventDefault();
+    const symbol = normalizeSymbol(els.tickerInput.value);
+    els.tickerInput.value = "";
+    if (!symbol || state.stockWatchlist.includes(symbol)) return;
+
+    state.stockWatchlist.push(symbol);
+    save();
+    renderWatchlist();
+    loadAllNews();
+  }
+
+  function removeTicker(symbol, card) {
+    card.classList.add("removing");
+    setTimeout(() => {
+      state.stockWatchlist = state.stockWatchlist.filter((s) => s !== symbol);
+      save();
+      renderWatchlist();
+      loadAllNews();
+    }, 180);
+  }
+
+  function onSaveApiKey(e) {
+    e.preventDefault();
+    const key = els.apiKeyInput.value.trim();
+    state.finnhubApiKey = key;
+    save();
+
+    els.apiKeyStatus.hidden = false;
+    els.apiKeyStatus.classList.remove("error");
+    els.apiKeyStatus.textContent = key
+      ? "Saved — fetching live headlines…"
+      : "Key cleared — showing quick links only.";
+
+    loadAllNews();
+  }
+
+  function quickLinks(symbol) {
+    const sym = encodeURIComponent(symbol);
+    return [
+      { label: "Yahoo", url: `https://finance.yahoo.com/quote/${sym}/news` },
+      { label: "Google", url: `https://www.google.com/finance/quote/${sym}:NASDAQ` },
+      { label: "MarketWatch", url: `https://www.marketwatch.com/investing/stock/${sym.toLowerCase()}` },
+    ];
+  }
+
+  function relativeTime(unixSeconds) {
+    const diffMs = Date.now() - unixSeconds * 1000;
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    return `${days}d ago`;
+  }
+
+  function buildTickerCard(symbol) {
+    const card = document.createElement("div");
+    card.className = "ticker-card";
+    card.dataset.symbol = symbol;
+
+    const head = document.createElement("div");
+    head.className = "ticker-card-head";
+
+    const badge = document.createElement("span");
+    badge.className = "ticker-symbol";
+    badge.textContent = symbol;
+    head.appendChild(badge);
+
+    const links = document.createElement("div");
+    links.className = "ticker-quick-links";
+    quickLinks(symbol).forEach(({ label, url }) => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = label;
+      links.appendChild(a);
+    });
+    head.appendChild(links);
+
+    const del = document.createElement("button");
+    del.className = "item-delete";
+    del.innerHTML = "&times;";
+    del.setAttribute("aria-label", `Stop tracking ${symbol}`);
+    del.addEventListener("click", () => removeTicker(symbol, card));
+    head.appendChild(del);
+
+    card.appendChild(head);
+
+    const headlines = document.createElement("ul");
+    headlines.className = "news-headlines";
+    card.appendChild(headlines);
+
+    const status = document.createElement("p");
+    status.className = "news-status";
+    card.appendChild(status);
+
+    return card;
+  }
+
+  function renderWatchlist() {
+    els.watchlistGrid.innerHTML = "";
+    els.watchlistEmptyHint.hidden = state.stockWatchlist.length > 0;
+
+    state.stockWatchlist.forEach((symbol) => {
+      els.watchlistGrid.appendChild(buildTickerCard(symbol));
+    });
+  }
+
+  async function fetchNewsForTicker(symbol) {
+    const card = els.watchlistGrid.querySelector(`.ticker-card[data-symbol="${CSS.escape(symbol)}"]`);
+    if (!card) return;
+    const headlines = card.querySelector(".news-headlines");
+    const status = card.querySelector(".news-status");
+
+    if (!state.finnhubApiKey) {
+      headlines.innerHTML = "";
+      status.className = "news-status";
+      status.textContent = "Add a Finnhub API key above for live headlines.";
+      return;
+    }
+
+    status.className = "news-status loading";
+    status.textContent = "Loading headlines";
+
+    try {
+      const to = new Date();
+      const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const fmt = (d) => d.toISOString().slice(0, 10);
+      const url = `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fmt(from)}&to=${fmt(to)}&token=${encodeURIComponent(state.finnhubApiKey)}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok || !Array.isArray(data)) {
+        const message = (data && data.error) || `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+
+      const top = data
+        .slice()
+        .sort((a, b) => b.datetime - a.datetime)
+        .slice(0, 5);
+
+      headlines.innerHTML = "";
+      if (!top.length) {
+        status.className = "news-status";
+        status.textContent = "No recent headlines found — try the quick links above.";
+        return;
+      }
+
+      top.forEach((item) => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = item.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = item.headline;
+        li.appendChild(a);
+
+        const meta = document.createElement("span");
+        meta.className = "news-meta";
+        meta.textContent = `${item.source || "Unknown source"} · ${relativeTime(item.datetime)}`;
+        li.appendChild(meta);
+
+        headlines.appendChild(li);
+      });
+
+      status.className = "news-status";
+      status.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    } catch (err) {
+      headlines.innerHTML = "";
+      status.className = "news-status error";
+      status.textContent = `Couldn't load live headlines (${err.message}). Use the quick links above.`;
+    }
+  }
+
+  function loadAllNews() {
+    state.stockWatchlist.forEach((symbol, i) => {
+      setTimeout(() => fetchNewsForTicker(symbol), i * 250);
+    });
   }
 
 })();

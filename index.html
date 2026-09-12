@@ -117,6 +117,36 @@
 
     </section>
   </main>
+
+  <!-- STOCK NEWS TRACKER -->
+  <section class="panel news-panel">
+    <div class="panel-header">
+      <h2>Stock News</h2>
+      <button class="icon-btn" id="refreshNewsBtn" aria-label="Refresh headlines" title="Refresh headlines">&#8635;</button>
+    </div>
+
+    <form id="watchlistForm" class="inline-form">
+      <input type="text" id="tickerInput" placeholder="Add a ticker (e.g. AAPL)" maxlength="10" required>
+      <button type="submit" class="btn btn-primary">Track</button>
+    </form>
+
+    <details class="api-key-details" id="apiKeyDetails">
+      <summary>Live headlines setup (optional)</summary>
+      <p class="picker-hint">
+        Add a free <a href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a> API key to pull
+        live headlines for your tickers. The key is saved only in this browser's local storage and is never sent
+        anywhere except directly to Finnhub. Without a key you still get quick links to each ticker's news.
+      </p>
+      <form id="apiKeyForm" class="inline-form">
+        <input type="text" id="apiKeyInput" placeholder="Finnhub API key" autocomplete="off">
+        <button type="submit" class="btn btn-primary">Save</button>
+      </form>
+      <p class="api-key-status" id="apiKeyStatus" hidden></p>
+    </details>
+
+    <div class="watchlist-grid" id="watchlistGrid"></div>
+    <p class="empty-hint" id="watchlistEmptyHint">No tickers tracked yet — add one above.</p>
+  </section>
 </div>
 
 <script src="app.js"></script>
