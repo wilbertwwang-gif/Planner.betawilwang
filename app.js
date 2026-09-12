@@ -56,6 +56,15 @@
     apiKeyForm: document.getElementById("apiKeyForm"),
     apiKeyInput: document.getElementById("apiKeyInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
+
+    twitterForm: document.getElementById("twitterForm"),
+    twitterHandleInput: document.getElementById("twitterHandleInput"),
+    twitterGrid: document.getElementById("twitterGrid"),
+    twitterEmptyHint: document.getElementById("twitterEmptyHint"),
+
+    exportDataBtn: document.getElementById("exportDataBtn"),
+    importDataBtn: document.getElementById("importDataBtn"),
+    importFileInput: document.getElementById("importFileInput"),
   };
 
   init();
@@ -101,34 +110,41 @@
     els.refreshNewsBtn.addEventListener("click", () => loadAllNews());
     els.apiKeyInput.value = state.finnhubApiKey || "";
 
+    els.twitterForm.addEventListener("submit", onAddTwitterHandle);
+
+    els.exportDataBtn.addEventListener("click", onExportData);
+    els.importDataBtn.addEventListener("click", () => els.importFileInput.click());
+    els.importFileInput.addEventListener("change", onImportFileSelected);
+
     renderCalendar();
     renderSelectedDay();
     renderRecurringList();
     renderWatchlist();
     loadAllNews();
+    renderTwitterWatchlist();
   }
 
   // ---------- persistence ----------
+
+  function defaultState() {
+    return {
+      events: {}, tasks: {}, checklistItems: [], checklistDone: {},
+      recurringTasks: [], recurringDone: {},
+      stockWatchlist: [], finnhubApiKey: "",
+      twitterWatchlist: [],
+    };
+  }
 
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        return Object.assign({
-          events: {}, tasks: {}, checklistItems: [], checklistDone: {},
-          recurringTasks: [], recurringDone: {},
-          stockWatchlist: [], finnhubApiKey: "",
-        }, parsed);
+        return Object.assign(defaultState(), JSON.parse(raw));
       }
     } catch (e) {
       console.warn("Failed to load planner data", e);
     }
-    return {
-      events: {}, tasks: {}, checklistItems: [], checklistDone: {},
-      recurringTasks: [], recurringDone: {},
-      stockWatchlist: [], finnhubApiKey: "",
-    };
+    return defaultState();
   }
 
   function save() {
@@ -811,6 +827,154 @@
     state.stockWatchlist.forEach((symbol, i) => {
       setTimeout(() => fetchNewsForTicker(symbol), i * 250);
     });
+  }
+
+  // ---------- twitter / X tracker ----------
+
+  function normalizeHandle(raw) {
+    return raw.trim().replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 15);
+  }
+
+  function onAddTwitterHandle(e) {
+    e.preventDefault();
+    const handle = normalizeHandle(els.twitterHandleInput.value);
+    els.twitterHandleInput.value = "";
+    if (!handle || state.twitterWatchlist.some((h) => h.toLowerCase() === handle.toLowerCase())) return;
+
+    state.twitterWatchlist.push(handle);
+    save();
+    renderTwitterWatchlist();
+  }
+
+  function removeTwitterHandle(handle, card) {
+    card.classList.add("removing");
+    setTimeout(() => {
+      state.twitterWatchlist = state.twitterWatchlist.filter((h) => h !== handle);
+      save();
+      renderTwitterWatchlist();
+    }, 180);
+  }
+
+  function buildTwitterCard(handle) {
+    const card = document.createElement("div");
+    card.className = "ticker-card twitter-card";
+    card.dataset.handle = handle;
+
+    const head = document.createElement("div");
+    head.className = "ticker-card-head";
+
+    const badge = document.createElement("span");
+    badge.className = "ticker-symbol";
+    badge.textContent = "@" + handle;
+    head.appendChild(badge);
+
+    const links = document.createElement("div");
+    links.className = "ticker-quick-links";
+    const profileLink = document.createElement("a");
+    profileLink.href = `https://x.com/${encodeURIComponent(handle)}`;
+    profileLink.target = "_blank";
+    profileLink.rel = "noopener";
+    profileLink.textContent = "Open profile";
+    links.appendChild(profileLink);
+    head.appendChild(links);
+
+    const del = document.createElement("button");
+    del.className = "item-delete";
+    del.innerHTML = "&times;";
+    del.setAttribute("aria-label", `Stop tracking @${handle}`);
+    del.addEventListener("click", () => removeTwitterHandle(handle, card));
+    head.appendChild(del);
+
+    card.appendChild(head);
+
+    const embedWrap = document.createElement("div");
+    embedWrap.className = "twitter-embed-wrap";
+    const timeline = document.createElement("a");
+    timeline.className = "twitter-timeline";
+    timeline.setAttribute("data-theme", "dark");
+    timeline.setAttribute("data-height", "420");
+    timeline.setAttribute("data-chrome", "noheader nofooter noborders transparent");
+    timeline.href = `https://twitter.com/${encodeURIComponent(handle)}?ref_src=twsrc%5Etfw`;
+    timeline.textContent = `Tweets by @${handle}`;
+    embedWrap.appendChild(timeline);
+    card.appendChild(embedWrap);
+
+    return card;
+  }
+
+  function renderTwitterWatchlist() {
+    els.twitterGrid.innerHTML = "";
+    els.twitterEmptyHint.hidden = state.twitterWatchlist.length > 0;
+
+    state.twitterWatchlist.forEach((handle) => {
+      els.twitterGrid.appendChild(buildTwitterCard(handle));
+    });
+
+    loadTwitterWidgets();
+  }
+
+  function loadTwitterWidgets() {
+    try {
+      if (window.twttr && typeof window.twttr.ready === "function") {
+        window.twttr.ready((twttr) => twttr.widgets.load(els.twitterGrid));
+      }
+    } catch (e) {
+      console.warn("Twitter widget load failed", e);
+    }
+  }
+
+  // ---------- data export / import ----------
+
+  function onExportData() {
+    const dataStr = JSON.stringify(state, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `planner-backup-${toKey(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function onImportFileSelected(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(reader.result);
+      } catch (err) {
+        alert("That file doesn't look like a valid planner backup (invalid JSON).");
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        alert("That file doesn't look like a valid planner backup.");
+        return;
+      }
+      const proceed = confirm("Importing will replace all planner data currently stored in this browser. Continue?");
+      if (!proceed) return;
+
+      Object.assign(state, defaultState(), parsed);
+      save();
+
+      selectedRecurDays.clear();
+      els.weekdayPicker.querySelectorAll(".wd-chip.active").forEach((chip) => chip.classList.remove("active"));
+      els.apiKeyInput.value = state.finnhubApiKey || "";
+
+      renderCalendar();
+      renderSelectedDay();
+      renderRecurringList();
+      renderWatchlist();
+      loadAllNews();
+      renderTwitterWatchlist();
+    };
+    reader.readAsText(file);
   }
 
 })();

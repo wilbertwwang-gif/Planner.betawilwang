@@ -14,7 +14,14 @@
       <span class="brand-dot"></span>
       <h1>Planner</h1>
     </div>
-    <div class="today-pill" id="todayPill"></div>
+    <div class="topbar-right">
+      <div class="data-actions">
+        <button class="btn" id="exportDataBtn" title="Download all planner data as a JSON file">Export data</button>
+        <button class="btn" id="importDataBtn" title="Load planner data from a JSON file">Import data</button>
+        <input type="file" id="importFileInput" accept="application/json" hidden>
+      </div>
+      <div class="today-pill" id="todayPill"></div>
+    </div>
   </header>
 
   <main class="layout">
@@ -149,8 +156,40 @@
     <div class="watchlist-grid" id="watchlistGrid"></div>
     <p class="empty-hint" id="watchlistEmptyHint">No tickers tracked yet — add one above.</p>
   </section>
+
+  <!-- TWITTER / X TRACKER -->
+  <section class="panel twitter-panel">
+    <div class="panel-header">
+      <h2>Twitter / X Tracker</h2>
+    </div>
+
+    <form id="twitterForm" class="inline-form">
+      <input type="text" id="twitterHandleInput" placeholder="Add a handle (e.g. NASA, no @)" maxlength="15" required>
+      <button type="submit" class="btn btn-primary">Track</button>
+    </form>
+    <p class="picker-hint">
+      Uses X's official embedded-timeline widget — no API key needed. Some ad blockers or privacy
+      extensions block <code>platform.twitter.com</code>, which hides the embed; the "Open profile"
+      link on each card always works as a fallback either way.
+    </p>
+
+    <div class="twitter-grid" id="twitterGrid"></div>
+    <p class="empty-hint" id="twitterEmptyHint">No accounts tracked yet — add one above.</p>
+  </section>
 </div>
 
+<script>
+  window.twttr = (function (d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0], t = window.twttr || {};
+    if (d.getElementById(id)) return t;
+    js = d.createElement(s); js.id = id;
+    js.src = "https://platform.twitter.com/widgets.js";
+    fjs.parentNode.insertBefore(js, fjs);
+    t._e = [];
+    t.ready = function (f) { t._e.push(f); };
+    return t;
+  }(document, "script", "twitter-wjs"));
+</script>
 <script src="app.js"></script>
 </body>
 </html>

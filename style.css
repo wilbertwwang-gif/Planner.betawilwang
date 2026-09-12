@@ -48,6 +48,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
@@ -72,6 +74,18 @@ body {
   letter-spacing: 0.2px;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.data-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .today-pill {
   font-size: 13px;
   color: var(--text-dim);
@@ -79,6 +93,7 @@ body {
   border: 1px solid var(--border);
   padding: 6px 14px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 /* Layout */
@@ -511,6 +526,15 @@ body {
   margin: 0 0 12px;
 }
 
+.picker-hint code {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .wd-chip {
   background: var(--bg-alt);
   border: 1px solid var(--border);
@@ -769,6 +793,37 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 1; }
+}
+
+/* Twitter / X tracker */
+.twitter-panel .inline-form {
+  max-width: 420px;
+  margin-bottom: 8px;
+}
+
+.twitter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.twitter-card {
+  min-width: 0;
+}
+
+.twitter-embed-wrap {
+  min-height: 200px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-alt);
+}
+
+.twitter-embed-wrap a.twitter-timeline {
+  display: block;
+  padding: 12px;
+  color: var(--accent-strong);
+  font-size: 12.5px;
+  text-decoration: none;
 }
 
 /* Scrollbar */
